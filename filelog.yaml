@@ -1,0 +1,104 @@
+name: Filelog
+
+on:
+  schedule:
+    - cron: '0 18 * * *'  # 6pm
+
+jobs:
+  random_push:
+    runs-on: ubuntu-latest
+    steps:
+      # Checkout the repository code to the GitHub Actions runner workspace
+      # This step uses actions/checkout@v3 to clone the repository and make it available for subsequent steps
+      - name: Checkout repository 
+        uses: actions/checkout@v3
+
+      # Configure Git with the Action bot's identity for making commits
+      # Sets the username and email that will appear in commit messages
+      - name: Set up Git configuration
+        run: |
+          git config user.name "jamiljami"
+          git config user.email "mjikj2@gmail.com"
+
+      # Week check
+      - name: Step 1
+        id: step_1
+        run: |
+          # 3/7
+          if (( RANDOM % 7 < 3 )); then
+            echo "automation=true" >> $GITHUB_OUTPUT
+            # 1-3
+            count=$(( (RANDOM % 3) + 1 ))
+            echo "count=$count" >> $GITHUB_OUTPUT
+            echo "Day Set $count Set."
+          else
+            echo "automation=false" >> $GITHUB_OUTPUT
+            echo "Not Set"
+          fi
+
+      # Exit early
+      - name: Not Set Exit
+        if: steps.step_1.outputs.automation == 'false'
+        run: echo "Not Scheduled Because Not Set."
+
+      # Step 2
+      - name: Times 6-12
+        if: steps.step_1.outputs.automation == 'true'
+        id: times
+        run: |
+          count=${{ steps.step_1.outputs.count }}
+          window=21600  # 6h-to-s
+          offsets=()
+          for i in $(seq 1 $count); do
+            offset=$(( RANDOM % window ))
+            offsets+=($offset)
+          done
+          # Sort ascending
+          IFS=$'\n' sorted=($(sort -n <<<"${offsets[*]}"))
+          unset IFS
+          t_str=$(IFS=, ; echo "${sorted[*]}")
+          echo "t_array=$t_str" >> $GITHUB_OUTPUT
+          echo "Seconds: $t_str"
+
+      # Waiting/Editing
+      - name: Wait
+        if: steps.step_1.outputs.automation == 'true'
+        env:
+          PUSHT: ${{ steps.times.outputs.t_array }}
+        run: |
+          current=$(date +%s)
+          today=$(date -u +'%Y-%m-%d')
+          today_6=$(date -d "${today} 18:00:00 GMT" +%s)
+          delt=$(( current - today_6 ))
+          IFS=',' read -r -a offsets <<< "$PUSHT"
+
+          for offset in "${offsets[@]}"; do
+            sleepy=$(( offset - delt ))
+            
+            if [ $sleepy -gt 0 ]; then
+              echo "Still $sleepy ..."
+              sleep $sleepy
+            else
+              echo "Log!"
+            fi
+
+            echo "Check any - $(date)"
+            git fetch
+
+            if git diff-index --quiet HEAD --; then
+              echo "None, filelog."
+              echo "$(date)" > filelog.txt
+              git add filelog.txt
+              git commit -m "Log test fix"
+            else
+              echo "Update"
+              git commit -a -m "System update" || echo "Da Item"
+            fi
+            
+            git push
+
+            current=$(date +%s)
+            delt=$(( current - today_6 ))
+          done
+
+          echo "Completed."
