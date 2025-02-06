@@ -65,7 +65,9 @@ jobs:
           unset IFS
           t_str=$(IFS=, ; echo "${sorted[*]}")
           echo "t_array=$t_str" >> $GITHUB_OUTPUT
-          echo "Seconds: $t_str"
+          echo "s: $t_str"
+          m_str=$(for s in "${sorted[@]}"; do echo "scale=1; $s/60" | bc; done | paste -sd,)
+          echo "min: $m_str"
 
       # Waiting/Editing
       - name: Wait
@@ -81,9 +83,10 @@ jobs:
 
           for offset in "${offsets[@]}"; do
             sleepy=$(( offset - delt ))
-            
+            sleepy_min=$(echo "scale=1; $sleepy/60" | bc | awk '{printf "%.1f", $0}')
+
             if [ $sleepy -gt 0 ]; then
-              echo "Still $sleepy ..."
+              echo "Still $sleepy_min ..."
               sleep $sleepy
             else
               echo "Log!"
