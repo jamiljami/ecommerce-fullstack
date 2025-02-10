@@ -49,12 +49,12 @@ jobs:
         run: echo "Not Scheduled Because Not Set."
 
       # Step 2
-      - name: Times 6-12
+      - name: Times 6-11
         if: steps.step_1.outputs.automation == 'true'
         id: times
         run: |
           count=${{ steps.step_1.outputs.count }}
-          window=21600  # 6h-to-s
+          window=18000  # 5h-to-s
           offsets=()
           for i in $(seq 1 $count); do
             offset=$(( RANDOM % window ))
@@ -78,15 +78,23 @@ jobs:
           current=$(date +%s)
           today=$(date -u +'%Y-%m-%d')
           today_6=$(date -d "${today} 18:00:00 GMT" +%s)
-          delt=$(( current - today_6 ))
+          echo "Wait: $(date -d @$current)"
+          echo "New relative t"
           IFS=',' read -r -a offsets <<< "$PUSHT"
 
+          push_t=()
           for offset in "${offsets[@]}"; do
-            sleepy=$(( offset - delt ))
+            push_t=$(( current + offset ))
+            push_t+=($push_t)
+          done
+
+          for push_time in "${push_times[@]}"; do
+            current=$(date +%s)
+            sleepy=$(( push_t - current ))
             sleepy_min=$(echo "scale=1; $sleepy/60" | bc | awk '{printf "%.1f", $0}')
 
             if [ $sleepy -gt 0 ]; then
-              echo "Still $sleepy_min ..."
+              echo "Still $sleepy_min until $(date -d @$push_t)."
               sleep $sleepy
             else
               echo "Log!"
@@ -99,16 +107,13 @@ jobs:
               echo "None, filelog."
               echo "$(date)" > filelog.txt
               git add filelog.txt
-              git commit -m "Log test fix"
+              git commit -m "Log test fix" || echo "filelog error?"
             else
               echo "Update"
               git commit -a -m "System update" || echo "Da Item"
             fi
             
             git push
-
-            current=$(date +%s)
-            delt=$(( current - today_6 ))
           done
 
           echo "Completed."
