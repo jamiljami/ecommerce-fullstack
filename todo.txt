@@ -1,0 +1,24 @@
+== TO DO ==
+
+# Step-back Ideas
+    // Take a step back to think about the design process.
+        - Understand the thought process of designing code & architecture natively from scratch
+
+# System Checks
+    // Running a basic check to turn on the system.
+        - Check if webpage runs: npm run start
+        - Check if backend runs: npm run dev
+
+# Integration Pathway
+    // How we build out our codebase subsystem by subsystem.
+
+    Pathway:
+        - TBD
+
+# Documentation
+    // How we document our codebase.
+        - TBD
+
+# Additional Notes
+    // Any additional notes that don't fit into the other categories.
+        - TBD
