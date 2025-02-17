@@ -13,7 +13,7 @@
     // How we build out our codebase subsystem by subsystem.
 
     Pathway:
-        - TBD
+        - FIX FILELOG.YAML WITH NEW.YAML TO SPLIT PUSHES BACKLOG (& carry over push_t fix)
 
 # Documentation
     // How we document our codebase.

@@ -32,7 +32,7 @@ jobs:
         id: step_1
         run: |
           # 3/7
-          if (( RANDOM % 7 < 4 )); then
+          if (( RANDOM % 7 < 3 )); then
             echo "automation=true" >> $GITHUB_OUTPUT
             # 1-3
             count=$(( (RANDOM % 3) + 1 ))
@@ -49,12 +49,12 @@ jobs:
         run: echo "Not Scheduled Because Not Set."
 
       # Step 2
-      - name: Times 6-11
+      - name: Times 6-12
         if: steps.step_1.outputs.automation == 'true'
         id: times
         run: |
           count=${{ steps.step_1.outputs.count }}
-          window=18000  # 5h-to-s
+          window=21600  # 6h-to-s
           offsets=()
           for i in $(seq 1 $count); do
             offset=$(( RANDOM % window ))
@@ -77,24 +77,16 @@ jobs:
         run: |
           current=$(date +%s)
           today=$(date -u +'%Y-%m-%d')
-          today_6=$(date -d "${today} 18:00:00 GMT" +%s)
-          echo "Wait: $(date -d @$current)"
-          echo "New relative t"
+          today_6=$(date -d "${today} 18:00:00 GMT" +%s)          
+          delt=$(( current - today_6 ))
           IFS=',' read -r -a offsets <<< "$PUSHT"
 
-          push_t=()
           for offset in "${offsets[@]}"; do
-            push_t=$(( current + offset ))
-            push_t+=($push_t)
-          done
-
-          for push_time in "${push_times[@]}"; do
-            current=$(date +%s)
-            sleepy=$(( push_t - current ))
+            sleepy=$(( offset - delt ))
             sleepy_min=$(echo "scale=1; $sleepy/60" | bc | awk '{printf "%.1f", $0}')
 
             if [ $sleepy -gt 0 ]; then
-              echo "Still $sleepy_min until $(date -d @$push_t)."
+              echo "Still $sleepy_min ..."
               sleep $sleepy
             else
               echo "Log!"
@@ -114,6 +106,9 @@ jobs:
             fi
             
             git push
+
+            current=$(date +%s)
+            delt=$(( current - today_6 ))
           done
 
           echo "Completed."

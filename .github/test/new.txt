@@ -1,0 +1,71 @@
+User's Comment:
+'''
+so basically we made that awesome github pushing system and that works perfectly basically. 
+Now i'm thinking as this thing pushes 3 times a week (with random pushes each day), then while 
+I work on my repos, it will push any changes for me as I work (which is something I'm testing 
+right now behind the scenes and we don't need to talk about further). So what I'm actually 
+thinking about is a specific scenario: let's say on one of the days that it does decide to push 
+to github AND we do have commits lined up to be pushed to the repo AND we have exactly 2 or 3 
+pushes that day (ie not just 1), then is there a way to do an automated split of the lined up 
+commits so that they are split roughly equally across the 2 or 3 pushes on that day? So for example 
+if there are 4 commits lined up and we have 2 pushes that day, it splits it up in 2 commits for 
+push 1 and 2 commits for push 2. Another example is 7 commits for 3 pushes would be 3 commits for 
+push 1, 2 commits for push 2 and 2 commits for push 3.
+'''
+
+ChatGPT's Comment:
+'''
+Thoughts:
+The user seems to have set up an awesome GitHub push system that works perfectly. They’re testing it right now, and the system pushes three times a week, with random pushes each day. While working on their repositories, any changes they make will be pushed automatically, which they’re experimenting with behind the scenes. No need to dive deeper into this for now!
+The user is considering a scenario where multiple commits are lined up, and more than one push is scheduled for a day. They want to split the commits roughly equally across the 2 or 3 scheduled pushes. For instance, with 4 commits and 2 pushes, it would split into 2 commits per push. Similarly, with 7 commits and 3 pushes, it would distribute them as 3, 2, and 2 commits across the pushes. This system would automate the division in a balanced way.
+The user wants to "roughly equally" split commits across multiple pushes, meaning each push should get N/P commits, with the remainder distributed. If there are 4 commits and 2 pushes, they would be split 2 and 2, and for 7 commits and 3 pushes, it would be 3, 2, 2. However, there’s a challenge: commits are already pushed in batches via GitHub Actions, and splitting them locally isn't trivial. Resetting the commit history is one option (but very hacky), creating complications with handling already committed changes.
+The user wants to split local commits across multiple scheduled pushes. If there are X unpushed commits and P scheduled pushes, they want to split commits by batch, pushing floor(X/P) commits per push. Possible solutions discussed include creating a temporary branch, using "cherry-pick" or "rebase" to move commits, and reset/resetting the remaining ones. However, this process has complexities such as manipulating commit history, pushing only subsets, and requiring extra safety checks, which may not be ideal depending on the workflow setup.
+The user wants to split unpushed commits across multiple scheduled pushes during the day. To do this, we could create a temporary branch, cherry-pick a batch of commits from a "work" branch, and push them to the "main" branch. The script would calculate how many commits (batch size) to push based on remaining pushes. After each push, the "work" branch is updated by removing the pushed commits. However, there are challenges with working across branches and maintaining the correct state, and conflicts might arise in a continuous workflow.
+Because Git always pushes the entire branch history by default, the trick is to work with two branches (or a staging branch) and then “move” a batch of commits from your working branch to your main branch in each scheduled push. This does involve rewriting history (by cherry‑picking and rebasing) on your working branch, so be careful and test thoroughly.
+
+Output:
+Below is a conceptual example that you can adjust. In this setup, we assume:
+"main" is your target branch that gets pushed.
+"work" is where you accumulate your daily commits (your “lined‑up commits”).
+The scheduled workflow (starting at 6 pm GMT for a 6‑hour window) will, at each scheduled push, do the following:
+Check how many commits are in "work" that are not in "main".
+If there are none, do a dummy commit on "main" (as before).
+If there are pending commits and there is more than one scheduled push today, calculate how many commits to push now. (For example, if you have 7 pending commits and 3 pushes remaining, push about 3 now.)
+Create a temporary branch from "main", cherry‑pick the calculated number of commits (in order) from "work" onto that temporary branch, merge it into "main", push "main", and then update "work" (by rebasing it onto the new "main" so that those commits are “removed” from the pending list).
+Also update an internal counter for the “remaining pushes” for that day.
+
+Below is a YAML snippet that demonstrates one way to do this. Note: This example is advanced; you must test it carefully on a throwaway branch before using it in production.
+'''
+
+new.yaml file
+
+'''
+How This Workflow Works
+
+Trigger and Setup:
+The workflow starts daily at 6 pm GMT.
+It decides (with a 3/7 chance) if today is an automation day and picks a random number (1–3) of scheduled pushes.
+It then generates random offsets (in seconds) within the next 6 hours.
+Processing Each Scheduled Push:
+
+In the process_push function:
+The script checks how many commits are pending in the work branch (i.e. commits that exist in work but not yet in main).
+If there are no pending commits: It creates a dummy commit on main.
+If there are pending commits:
+It calculates a batch size for the current push using ceiling division (so that, for example, if 7 commits are pending and 3 pushes remain, it might choose 3 commits for the first push).
+It then creates a temporary branch from main, cherry‑picks that many commits (in order) from work onto it, merges the temporary branch back into main, and pushes main.
+Finally, it rebases the work branch onto the updated main to “remove” the commits that were just pushed.
+The counter for the remaining pushes (TOTAL_PUSHES) is then decremented.
+
+Waiting Loop:
+The job waits until each scheduled offset is reached and then calls process_push.
+
+Important Notes
+Two-Branch Approach:
+This example assumes you use a separate branch (here called work) to accumulate your daily commits. The workflow then splits those commits onto main gradually.
+History Rewriting:
+Rewriting history on your working branch (via cherry‑pick and rebase) can be risky. Make sure you test this setup on a test repository first.
+State Management:
+The remaining pushes for the day are tracked via an environment variable (TOTAL_PUSHES) updated during the workflow run.
+This solution is advanced and might need adjustments based on your exact workflow and branching strategy. Let me know if you need further clarifications or tweaks!
+'''

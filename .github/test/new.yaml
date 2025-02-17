@@ -1,0 +1,158 @@
+name: Daily Random Push Scheduler with Commit Splitting
+
+on:
+  schedule:
+    - cron: '0 18 * * *'  # Triggers daily at 18:00 GMT (6pm)
+
+jobs:
+  random_push:
+    runs-on: ubuntu-latest
+    env:
+      # This variable is used to track how many pushes are scheduled for the day.
+      # It is set during the workflow and decremented after each push.
+      TOTAL_PUSHES: "0"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # Ensure full history is available
+
+      - name: Set up Git configuration
+        run: |
+          git config user.name "GitHub Action"
+          git config user.email "action@github.com"
+
+      - name: Decide if today is an automation day and number of pushes
+        id: decide_day
+        run: |
+          # 3 out of 7 chance for automation.
+          if (( RANDOM % 7 < 3 )); then
+            echo "automation=true" >> $GITHUB_OUTPUT
+            # Randomly choose 1 to 3 pushes.
+            num_pushes=$(( (RANDOM % 3) + 1 ))
+            echo "num_pushes=$num_pushes" >> $GITHUB_OUTPUT
+            echo "Today is an automation day with $num_pushes scheduled push(es)."
+          else
+            echo "automation=false" >> $GITHUB_OUTPUT
+            echo "Not an automation day."
+          fi
+
+      - name: Exit if not an automation day
+        if: steps.decide_day.outputs.automation == 'false'
+        run: echo "No automation scheduled for today."
+
+      - name: Store total pushes in an env file
+        if: steps.decide_day.outputs.automation == 'true'
+        run: |
+          echo "TOTAL_PUSHES=${{ steps.decide_day.outputs.num_pushes }}" >> $GITHUB_ENV
+
+      - name: Generate random push times within 6-hour window (6pm to midnight)
+        if: steps.decide_day.outputs.automation == 'true'
+        id: gen_times
+        run: |
+          num_pushes=${{ steps.decide_day.outputs.num_pushes }}
+          window_seconds=21600  # 6 hours in seconds
+          offsets=()
+          for i in $(seq 1 $num_pushes); do
+            offset=$(( RANDOM % window_seconds ))
+            offsets+=($offset)
+          done
+          # Sort offsets in ascending order.
+          IFS=$'\n' sorted=($(sort -n <<<"${offsets[*]}"))
+          unset IFS
+          times_str=$(IFS=, ; echo "${sorted[*]}")
+          echo "push_times=$times_str" >> $GITHUB_OUTPUT
+          echo "Scheduled push offsets (in seconds after 6pm): $times_str"
+
+      - name: Process scheduled pushes
+        if: steps.decide_day.outputs.automation == 'true'
+        env:
+          PUSH_TIMES: ${{ steps.gen_times.outputs.push_times }}
+        run: |
+          # --- Helper function to process a single push ---
+          process_push() {
+            echo "Processing a scheduled push at $(date)..."
+
+            # First, check if there are any pending commits on branch 'work' not in 'main'
+            pending_commits=$(git rev-list main..work --count)
+            echo "Found $pending_commits pending commit(s) in 'work'."
+
+            if [ "$pending_commits" -eq 0 ]; then
+              echo "No pending commits. Creating a dummy commit on main."
+              echo "$(date)" > dummy_commit.txt
+              git add dummy_commit.txt
+              git commit -m "Dummy commit at $(date)"
+              git push origin main
+            else
+              # Read the current remaining pushes from an environment file.
+              remaining_pushes=${TOTAL_PUSHES}
+              echo "Remaining scheduled pushes today: $remaining_pushes"
+
+              # Calculate the batch size using ceiling division.
+              # batch_size = ceil(pending_commits / remaining_pushes)
+              batch_size=$(( (pending_commits + remaining_pushes - 1) / remaining_pushes ))
+              echo "Batch size for this push: $batch_size commit(s)."
+
+              # Create a temporary branch from main.
+              git checkout main
+              git pull origin main
+              git checkout -b temp_push
+
+              # Get the list of commits to push (oldest first)
+              commits_to_push=$(git rev-list --reverse main..work | head -n $batch_size)
+              echo "Commits to be pushed in this batch:"
+              echo "$commits_to_push"
+
+              # Cherry-pick each commit onto temp_push.
+              for commit in $commits_to_push; do
+                git cherry-pick $commit || { echo "Cherry-pick failed on commit $commit"; exit 1; }
+              done
+
+              # Merge the temp branch into main (fast-forward).
+              git checkout main
+              git merge temp_push --ff-only
+              git push origin main
+
+              # Delete the temporary branch.
+              git branch -D temp_push
+
+              # Update the 'work' branch to remove the commits we just pushed.
+              # This rebases 'work' onto the updated main.
+              git checkout work
+              git rebase main
+
+              # Switch back to main.
+              git checkout main
+            fi
+
+            # Decrement the TOTAL_PUSHES variable for the day.
+            NEW_TOTAL=$(( TOTAL_PUSHES - 1 ))
+            echo "Updating remaining pushes to $NEW_TOTAL"
+            echo "TOTAL_PUSHES=$NEW_TOTAL" >> $GITHUB_ENV
+          }
+
+          # --- Main loop: Wait for each scheduled push ---
+          current_epoch=$(date +%s)
+          today_date=$(date -u +'%Y-%m-%d')
+          # Today’s 6pm GMT epoch time.
+          today_6pm_epoch=$(date -d "${today_date} 18:00:00 GMT" +%s)
+          elapsed=$(( current_epoch - today_6pm_epoch ))
+          
+          IFS=',' read -r -a times <<< "$PUSH_TIMES"
+          
+          for offset in "${times[@]}"; do
+            sleep_seconds=$(( offset - elapsed ))
+            if [ $sleep_seconds -gt 0 ]; then
+              echo "Sleeping for $sleep_seconds seconds until next scheduled push..."
+              sleep $sleep_seconds
+            else
+              echo "Scheduled time already passed; processing push immediately."
+            fi
+
+            process_push
+
+            current_epoch=$(date +%s)
+            elapsed=$(( current_epoch - today_6pm_epoch ))
+          done
+
+          echo "All scheduled pushes for today are completed."
