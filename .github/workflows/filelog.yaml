@@ -31,8 +31,8 @@ jobs:
       - name: Step 1
         id: step_1
         run: |
-          # 3/7
-          if (( RANDOM % 7 < 4 )); then
+          # 5/7
+          if (( RANDOM % 7 < 5 )); then
             echo "automation=true" >> $GITHUB_OUTPUT
             # 1-3
             count=$(( (RANDOM % 3) + 1 ))
